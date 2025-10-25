@@ -1,0 +1,55 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<gpx version="1.1" creator="Refuel Sample" xmlns="http://www.topografix.com/GPX/1/1">
+  <metadata>
+    <name>Sample Hiking Route</name>
+    <desc>A sample hiking route for testing Refuel app</desc>
+    <time>2024-01-01T00:00:00Z</time>
+  </metadata>
+  <trk>
+    <name>Sample Hiking Route</name>
+    <desc>Test route through Amsterdam area</desc>
+    <trkseg>
+      <trkpt lat="52.370216" lon="4.895168">
+        <ele>0</ele>
+        <time>2024-01-01T10:00:00Z</time>
+      </trkpt>
+      <trkpt lat="52.375216" lon="4.900168">
+        <ele>2</ele>
+        <time>2024-01-01T10:15:00Z</time>
+      </trkpt>
+      <trkpt lat="52.380216" lon="4.905168">
+        <ele>3</ele>
+        <time>2024-01-01T10:30:00Z</time>
+      </trkpt>
+      <trkpt lat="52.385216" lon="4.910168">
+        <ele>5</ele>
+        <time>2024-01-01T10:45:00Z</time>
+      </trkpt>
+      <trkpt lat="52.390216" lon="4.915168">
+        <ele>4</ele>
+        <time>2024-01-01T11:00:00Z</time>
+      </trkpt>
+      <trkpt lat="52.395216" lon="4.920168">
+        <ele>6</ele>
+        <time>2024-01-01T11:15:00Z</time>
+      </trkpt>
+      <trkpt lat="52.400216" lon="4.925168">
+        <ele>7</ele>
+        <time>2024-01-01T11:30:00Z</time>
+      </trkpt>
+      <trkpt lat="52.405216" lon="4.930168">
+        <ele>8</ele>
+        <time>2024-01-01T11:45:00Z</time>
+      </trkpt>
+      <trkpt lat="52.410216" lon="4.935168">
+        <ele>9</ele>
+        <time>2024-01-01T12:00:00Z</time>
+      </trkpt>
+      <trkpt lat="52.415216" lon="4.940168">
+        <ele>10</ele>
+        <time>2024-01-01T12:15:00Z</time>
+      </trkpt>
+    </trkseg>
+  </trk>
+</gpx>
+
