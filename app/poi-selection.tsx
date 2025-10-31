@@ -45,7 +45,8 @@ export default function POISelection() {
     <View className="flex-1 bg-white">
       <Stack.Screen options={{ title: 'Find Along The Way', headerBackTitle: 'Back' }} />
 
-      <ScrollView className="flex-1 px-4">
+      <ScrollView className="flex-1">
+        <View className="mx-auto w-full px-4" style={{ maxWidth: 480 }}>
         {/* Header Info */}
         <View className="mt-4 rounded-xl bg-blue-50 p-4">
           <Text className="text-center text-sm leading-6 text-blue-700">
@@ -121,6 +122,7 @@ export default function POISelection() {
             <Text className="font-semibold text-white">Find Points of Interest</Text>
             <ArrowRight size={20} color="#ffffff" style={{ marginLeft: 8 }} />
           </TouchableOpacity>
+        </View>
         </View>
       </ScrollView>
     </View>

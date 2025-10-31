@@ -26,8 +26,17 @@ export default function Root({ children }: { children: React.ReactNode }) {
         */}
         <ScrollViewStyleReset />
 
+        {/* Leaflet CSS */}
+        <link
+          rel="stylesheet"
+          href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+          integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY="
+          crossOrigin=""
+        />
+        
         {/* Using raw CSS styles as an escape-hatch to ensure the background color never flickers in dark-mode. */}
         <style dangerouslySetInnerHTML={{ __html: responsiveBackground }} />
+        <style dangerouslySetInnerHTML={{ __html: leafletCustomStyles }} />
         {/* Add any additional <head> elements that you want globally available on web... */}
       </head>
       <body>{children}</body>
@@ -44,3 +53,14 @@ body {
     background-color: #000;
   }
 }`;
+
+const leafletCustomStyles = `
+.leaflet-container {
+  height: 100%;
+  width: 100%;
+}
+.custom-div-icon {
+  background: transparent;
+  border: none;
+}
+`;

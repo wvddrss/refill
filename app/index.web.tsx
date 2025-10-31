@@ -1,8 +1,6 @@
 import { Stack, useRouter } from 'expo-router';
 import { View, Text, Alert, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { useState } from 'react';
-import * as DocumentPicker from 'expo-document-picker';
-import { readAsStringAsync } from 'expo-file-system/legacy';
+import { useState, useRef, useEffect } from 'react';
 import { Upload, Map, ArrowRight, RotateCcw } from 'lucide-react-native';
 import { useStore } from '@/store/store';
 import { parseGPX } from '@/utils/gpxParser';
@@ -11,49 +9,70 @@ export default function Home() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const { setOriginalRoute, gpxFileName, reset } = useStore();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleSelectGPX = async () => {
-    try {
-      setLoading(true);
+  useEffect(() => {
+    const input = fileInputRef.current;
+    if (!input) return;
 
-      // Open document picker
-      const result = await DocumentPicker.getDocumentAsync({
-        type: '*/*',
-        copyToCacheDirectory: true,
-      });
+    const handleChange = async (event: Event) => {
+      console.log('File input changed', event);
+      const target = event.target as HTMLInputElement;
+      const file = target.files?.[0];
 
-      if (result.canceled || !result.assets || result.assets.length === 0) {
-        setLoading(false);
+      if (!file) {
+        console.log('No file selected');
         return;
       }
 
-      const file = result.assets[0];
+      console.log('File selected:', file.name, file.type);
 
-      // Read file content
-      const content = await readAsStringAsync(file.uri);
+      try {
+        setLoading(true);
 
-      // Parse GPX
-      const route = parseGPX(content);
+        // Read file content using FileReader
+        const content = await new Promise<string>((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onload = (e) => resolve(e.target?.result as string);
+          reader.onerror = reject;
+          reader.readAsText(file);
+        });
 
-      if (!route.points || route.points.length === 0) {
-        Alert.alert('Error', 'No valid route found in GPX file');
+        console.log('File content loaded, length:', content.length);
+
+        // Parse GPX
+        const route = parseGPX(content);
+        console.log('Route parsed, points:', route.points?.length);
+
+        if (!route.points || route.points.length === 0) {
+          Alert.alert('Error', 'No valid route found in GPX file');
+          setLoading(false);
+          return;
+        }
+
+        // Save to store
+        setOriginalRoute(route, file.name);
+
         setLoading(false);
-        return;
+
+        // Navigate to POI selection
+        router.push('/poi-selection');
+      } catch (error) {
+        console.error('Error loading GPX:', error);
+        Alert.alert('Error', 'Failed to load GPX file. Please try again.');
+        setLoading(false);
       }
 
-      // Save to store
-      setOriginalRoute(route, file.name);
+      // Reset input so the same file can be selected again
+      target.value = '';
+    };
 
-      setLoading(false);
+    input.addEventListener('change', handleChange);
 
-      // Navigate to POI selection
-      router.push('/poi-selection');
-    } catch (error) {
-      console.error('Error loading GPX:', error);
-      Alert.alert('Error', 'Failed to load GPX file. Please try again.');
-      setLoading(false);
-    }
-  };
+    return () => {
+      input.removeEventListener('change', handleChange);
+    };
+  }, [router, setOriginalRoute]);
 
   const handleReset = () => {
     reset();
@@ -78,21 +97,51 @@ export default function Home() {
       {/* Content */}
       <View className="mx-auto w-full flex-1 px-4" style={{ maxWidth: 480 }}>
         {/* Upload Section */}
-        <TouchableOpacity
-          className="mt-4 items-center rounded-xl border-2 border-dashed border-blue-200 p-6"
-          activeOpacity={0.7}
-          onPress={handleSelectGPX}
-          disabled={loading}>
+        <label
+          htmlFor="gpx-upload"
+          style={{
+            marginTop: 16,
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            padding: 24,
+            borderRadius: 12,
+            border: '2px dashed #bfdbfe',
+            backgroundColor: loading ? '#f3f4f6' : 'transparent',
+            cursor: loading ? 'default' : 'pointer',
+            transition: 'all 0.2s',
+          }}
+          onMouseEnter={(e) => {
+            if (!loading) {
+              e.currentTarget.style.borderColor = '#60a5fa';
+              e.currentTarget.style.backgroundColor = '#eff6ff';
+            }
+          }}
+          onMouseLeave={(e) => {
+            if (!loading) {
+              e.currentTarget.style.borderColor = '#bfdbfe';
+              e.currentTarget.style.backgroundColor = 'transparent';
+            }
+          }}>
+          <input
+            ref={fileInputRef}
+            id="gpx-upload"
+            type="file"
+            accept=".gpx,application/gpx+xml"
+            style={{ display: 'none' }}
+            disabled={loading}
+          />
           {loading ? (
             <ActivityIndicator size="large" color="#3b82f6" />
           ) : (
             <>
               <Upload size={40} color="#60a5fa" strokeWidth={2} />
               <Text className="mt-2 font-medium text-blue-600">Upload GPX File</Text>
-              <Text className="mt-1 text-sm text-gray-400">Tap to select your route file</Text>
+              <Text className="mt-1 text-sm text-gray-400">Click to select your route file</Text>
             </>
           )}
-        </TouchableOpacity>
+        </label>
 
         {gpxFileName && (
           <View className="mt-4 rounded-xl bg-green-50 p-4">
@@ -138,3 +187,4 @@ export default function Home() {
     </View>
   );
 }
+

@@ -6,7 +6,8 @@
     "scheme": "refill",
     "platforms": [
       "ios",
-      "android"
+      "android",
+      "web"
     ],
     "web": {
       "bundler": "metro",
@@ -41,8 +42,10 @@
       "supportsTablet": true,
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "This app uses your location to show you on the map.",
-        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses your location to show you on the map."
-      }
+        "NSLocationAlwaysAndWhenInUseUsageDescription": "This app uses your location to show you on the map.",
+        "ITSAppUsesNonExemptEncryption": false
+      },
+      "bundleIdentifier": "com.wvddries.refill"
     },
     "android": {
       "adaptiveIcon": {
