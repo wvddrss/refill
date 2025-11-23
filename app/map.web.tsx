@@ -1,7 +1,7 @@
 import { Stack, useRouter } from 'expo-router';
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator } from 'react-native';
-import { useState, useEffect } from 'react';
-import { Download, Route as RouteIcon, Eye } from 'lucide-react-native';
+import { useState, useEffect, useMemo, useCallback } from 'react';
+import { Download, Eye } from 'lucide-react-native';
 import LeafletMap from '@/components/LeafletMap';
 import { useStore } from '@/store/store';
 import { fetchPOIsAlongRoute } from '@/utils/poiService';
@@ -25,6 +25,9 @@ export default function MapScreen() {
   const [loading, setLoading] = useState(false);
   const [loadingPOIs, setLoadingPOIs] = useState(true);
   const [showModifiedRoute, setShowModifiedRoute] = useState(false);
+  const [lastGeneratedCount, setLastGeneratedCount] = useState(0);
+
+  const selectedPOICount = useMemo(() => pois.filter((p) => p.selected).length, [pois]);
 
   useEffect(() => {
     if (!originalRoute) {
@@ -54,40 +57,75 @@ export default function MapScreen() {
     }
   };
 
-  const handleGenerateRoute = () => {
+  const handleGenerateRoute = useCallback(
+    async ({ silent }: { silent?: boolean } = {}) => {
+      if (!originalRoute) return;
+
+      const selectedCount = selectedPOICount;
+      if (selectedCount === 0) {
+        if (!silent) {
+          Alert.alert('Notice', 'Please select at least one POI to generate a new route.');
+        }
+        return;
+      }
+
+      setLoading(true);
+
+      try {
+        const newRoute = await generateRouteWithPOIs(originalRoute, pois);
+        setModifiedRoute(newRoute);
+        setShowModifiedRoute(true);
+        setLastGeneratedCount(selectedCount);
+
+        const originalDistance = calculateRouteDistance(originalRoute);
+        const newDistance = calculateRouteDistance(newRoute);
+        const additionalDistance = newDistance - originalDistance;
+
+        if (!silent) {
+          Alert.alert(
+            'Route Generated',
+            `New route created with ${selectedCount} stops.\n\n` +
+              `Original: ${originalDistance.toFixed(1)} km\n` +
+              `New: ${newDistance.toFixed(1)} km\n` +
+              `Additional: ${additionalDistance.toFixed(1)} km`
+          );
+        }
+      } catch (error) {
+        console.error('Error generating route:', error);
+        if (!silent) {
+          Alert.alert('Error', 'Failed to generate route. Please try again.');
+        }
+      } finally {
+        setLoading(false);
+      }
+    },
+    [originalRoute, pois, selectedPOICount, setModifiedRoute, setShowModifiedRoute]
+  );
+
+  // Auto-generate route when POI selection changes
+  useEffect(() => {
     if (!originalRoute) return;
 
-    const selectedCount = pois.filter((p) => p.selected).length;
-    if (selectedCount === 0) {
-      Alert.alert('Notice', 'Please select at least one POI to generate a new route.');
+    if (selectedPOICount === 0) {
+      if (lastGeneratedCount !== 0) {
+        setLastGeneratedCount(0);
+      }
       return;
     }
 
-    setLoading(true);
+    if (loading) return;
+    if (selectedPOICount === lastGeneratedCount) return;
 
-    try {
-      const newRoute = generateRouteWithPOIs(originalRoute, pois);
-      setModifiedRoute(newRoute);
-      setShowModifiedRoute(true);
-
-      const originalDistance = calculateRouteDistance(originalRoute);
-      const newDistance = calculateRouteDistance(newRoute);
-      const additionalDistance = newDistance - originalDistance;
-
-      Alert.alert(
-        'Route Generated',
-        `New route created with ${selectedCount} stops.\n\n` +
-          `Original: ${originalDistance.toFixed(1)} km\n` +
-          `New: ${newDistance.toFixed(1)} km\n` +
-          `Additional: ${additionalDistance.toFixed(1)} km`
-      );
-    } catch (error) {
-      console.error('Error generating route:', error);
-      Alert.alert('Error', 'Failed to generate route. Please try again.');
-    } finally {
-      setLoading(false);
-    }
-  };
+    handleGenerateRoute({ silent: true }).catch((error) =>
+      console.error('Auto route generation failed', error)
+    );
+  }, [
+    originalRoute,
+    selectedPOICount,
+    lastGeneratedCount,
+    loading,
+    handleGenerateRoute,
+  ]);
 
   const handleExportGPX = async () => {
     const routeToExport = showModifiedRoute && modifiedRoute ? modifiedRoute : originalRoute;
@@ -134,30 +172,14 @@ export default function MapScreen() {
   const renderHeaderRight = () => {
     return (
       <View className="hidden flex-row gap-2 pr-4 md:flex">
-        {pois.filter((p) => p.selected).length > 0 && (
-          <>
-            <TouchableOpacity
-              className={`flex-row items-center justify-center rounded-lg px-4 py-2 ${
-                loading ? 'bg-gray-300' : showModifiedRoute ? 'bg-green-500' : 'bg-blue-500'
-              }`}
-              activeOpacity={0.7}
-              onPress={handleGenerateRoute}
-              disabled={loading}>
-              {!loading && <RouteIcon size={16} color="#ffffff" style={{ marginRight: 6 }} />}
-              <Text className="text-sm font-semibold text-white">
-                {loading ? 'Generating...' : showModifiedRoute ? 'Regenerate' : 'Generate'}
-              </Text>
-            </TouchableOpacity>
-            {showModifiedRoute && (
-              <TouchableOpacity
-                className="flex-row items-center justify-center rounded-lg bg-gray-100 px-4 py-2"
-                activeOpacity={0.7}
-                onPress={() => setShowModifiedRoute(false)}>
-                <Eye size={16} color="#6b7280" style={{ marginRight: 6 }} />
-                <Text className="text-sm font-medium text-gray-600">Original</Text>
-              </TouchableOpacity>
-            )}
-          </>
+        {showModifiedRoute && (
+          <TouchableOpacity
+            className="flex-row items-center justify-center rounded-lg bg-gray-100 px-4 py-2"
+            activeOpacity={0.7}
+            onPress={() => setShowModifiedRoute(false)}>
+            <Eye size={16} color="#6b7280" style={{ marginRight: 6 }} />
+            <Text className="text-sm font-medium text-gray-600">Original</Text>
+          </TouchableOpacity>
         )}
         <TouchableOpacity
           className={`flex-row items-center justify-center rounded-lg px-4 py-2 ${
@@ -218,7 +240,7 @@ export default function MapScreen() {
             ) : (
               <>
                 <Text className="mb-4 text-sm text-gray-600">
-                  {pois.filter((p) => p.selected).length} selected • Tap markers on map or check
+                  {pois.filter((p) => p.selected).length} selected • Click markers on map or check
                   boxes below
                 </Text>
 
@@ -293,7 +315,7 @@ export default function MapScreen() {
             ) : (
               <>
                 <Text className="mb-4 text-sm text-gray-600">
-                  {pois.filter((p) => p.selected).length} selected • Tap markers on map or check
+                  {pois.filter((p) => p.selected).length} selected • Click markers on map or check
                   boxes below
                 </Text>
 
@@ -338,34 +360,22 @@ export default function MapScreen() {
 
       {/* Floating Action Buttons - Mobile Only */}
       <div className="md:hidden" style={{ position: 'fixed', bottom: '24px', right: '24px', display: 'flex', flexDirection: 'column', gap: '12px', zIndex: 1000 }}>
-        {pois.filter((p) => p.selected).length > 0 && (
-          <>
-            <TouchableOpacity
-              className={`flex-row items-center justify-center rounded-full px-6 py-4 shadow-lg ${
-                loading ? 'bg-gray-300' : showModifiedRoute ? 'bg-green-500' : 'bg-blue-500'
-              }`}
-              activeOpacity={0.7}
-              onPress={handleGenerateRoute}
-              disabled={loading}>
-              {!loading && <RouteIcon size={20} color="#ffffff" style={{ marginRight: 8 }} />}
-              <Text className="font-semibold text-white">
-                {loading
-                  ? 'Generating...'
-                  : showModifiedRoute
-                    ? 'Regenerate'
-                    : 'Generate Route'}
-              </Text>
-            </TouchableOpacity>
-            {showModifiedRoute && (
-              <TouchableOpacity
-                className="flex-row items-center justify-center rounded-full bg-white px-6 py-3 shadow-lg"
-                activeOpacity={0.7}
-                onPress={() => setShowModifiedRoute(false)}>
-                <Eye size={18} color="#6b7280" style={{ marginRight: 8 }} />
-                <Text className="font-medium text-gray-600">Show Original</Text>
-              </TouchableOpacity>
-            )}
-          </>
+        {showModifiedRoute ? (
+          <TouchableOpacity
+            className="flex-row items-center justify-center rounded-full bg-white px-6 py-3 shadow-lg"
+            activeOpacity={0.7}
+            onPress={() => setShowModifiedRoute(false)}>
+            <Eye size={18} color="#6b7280" style={{ marginRight: 8 }} />
+            <Text className="font-medium text-gray-600">Show Original</Text>
+          </TouchableOpacity>
+        ): (
+          <TouchableOpacity
+            className="flex-row items-center justify-center rounded-full bg-white px-6 py-3 shadow-lg"
+            activeOpacity={0.7}
+            onPress={() => setShowModifiedRoute(true)}>
+            <Eye size={18} color="#6b7280" style={{ marginRight: 8 }} />
+            <Text className="font-medium text-gray-600">Show Modified</Text>
+          </TouchableOpacity>
         )}
 
         <TouchableOpacity

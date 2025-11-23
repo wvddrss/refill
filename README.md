@@ -12,6 +12,7 @@ Refuel is a mobile app that helps you plan your routes with essential stops alon
 - **Customizable Search**: Set maximum deviation from route (default 5km)
 - **Interactive Map**: View your route with POI markers
 - **Route Generation**: Generate optimized routes with selected stops
+- **Bike-Friendly Routing**: Mapbox Directions (cycling profile) keeps detours bike-ready
 - **GPX Export**: Export your modified route as GPX
 
 ## 🚀 Getting Started
@@ -22,6 +23,12 @@ Refuel is a mobile app that helps you plan your routes with essential stops alon
 - npm or yarn
 - Expo CLI
 - iOS Simulator (Mac) or Android Studio (for Android development)
+
+### Mapbox Directions API
+
+- Create a Mapbox secret token with Directions/Datasets read scopes (cycling profile is used).
+- Add it to your environment as `EXPO_PUBLIC_MAPBOX_TOKEN`. During development you can create a `.env` file with `EXPO_PUBLIC_MAPBOX_TOKEN=sk_your_token` before running Expo.
+- The code ships with a `MAPBOX_TOKEN_PLACEHOLDER` fallback—replace it or set the env var before generating routes to avoid falling back to straight-line inserts.
 
 ### Installation
 
