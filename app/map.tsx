@@ -1,8 +1,9 @@
 import { Stack, useRouter } from 'expo-router';
-import { View, Text, TouchableOpacity, Alert, ActivityIndicator, Share, ScrollView, Dimensions, useWindowDimensions } from 'react-native';
+import { View, Text, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Dimensions, useWindowDimensions } from 'react-native';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import Mapbox from '@rnmapbox/maps';
 import { cacheDirectory, documentDirectory, writeAsStringAsync } from 'expo-file-system/legacy';
+import * as Sharing from 'expo-sharing';
 import { Download, Eye } from 'lucide-react-native';
 import { useStore, POI } from '@/store/store';
 import { fetchPOIsAlongRoute } from '@/utils/poiService';
@@ -295,13 +296,21 @@ export default function MapScreen() {
 
       await writeAsStringAsync(fileUri, gpxContent);
 
-      // Share the file
-      await Share.share({
-        url: fileUri,
-        message: 'Here is my Refuel route',
+      // Check if sharing is available
+      if (!(await Sharing.isAvailableAsync())) {
+        Alert.alert('Error', 'Sharing is not available on this device');
+        setLoading(false);
+        return;
+      }
+
+      // Share the file using expo-sharing
+      await Sharing.shareAsync(fileUri, {
+        mimeType: 'application/gpx+xml',
+        dialogTitle: 'Share your Refuel route',
+        UTI: 'public.xml',
       });
 
-      Alert.alert('Success', `Route exported as ${fileName}`);
+      console.log('✅ GPX file shared successfully:', fileName);
     } catch (error) {
       console.error('Error exporting GPX:', error);
       Alert.alert('Error', 'Failed to export GPX. Please try again.');
