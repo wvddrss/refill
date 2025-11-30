@@ -1,9 +1,9 @@
 import '../global.css';
 
 import { Stack, useRouter } from 'expo-router';
-import { useEffect } from 'react';
+import { useEffect, useCallback } from 'react';
 import * as Linking from 'expo-linking';
-import { readAsStringAsync } from 'expo-file-system/legacy';
+import { cacheDirectory, copyAsync, readAsStringAsync, deleteAsync } from 'expo-file-system/legacy';
 import { Alert } from 'react-native';
 import { useStore } from '@/store/store';
 import { parseGPX } from '@/utils/gpxParser';
@@ -12,30 +12,7 @@ export default function Layout() {
   const router = useRouter();
   const { setOriginalRoute } = useStore();
 
-  useEffect(() => {
-    // Handle initial URL when app is opened with a file
-    const handleInitialURL = async () => {
-      const initialUrl = await Linking.getInitialURL();
-      if (initialUrl) {
-        await handleFileIntent(initialUrl);
-      }
-    };
-
-    // Handle URL events when app is already running
-    const subscription = Linking.addEventListener('url', async (event) => {
-      if (event.url) {
-        await handleFileIntent(event.url);
-      }
-    });
-
-    handleInitialURL();
-
-    return () => {
-      subscription.remove();
-    };
-  }, []);
-
-  const handleFileIntent = async (url: string) => {
+  const handleFileIntent = useCallback(async (url: string) => {
     try {
       // Only process file intents, not normal app launch URLs
       // Skip URLs that are app schemes without file data
@@ -64,8 +41,31 @@ export default function Layout() {
         return;
       }
 
-      // Read file content
-      const content = await readAsStringAsync(fileUri);
+      // Extract filename from URI (decode URI component to handle special characters)
+      const decodedUri = decodeURIComponent(fileUri);
+      const fileName = decodedUri.split('/').pop()?.replace(/^.*?([^/]+\.gpx)$/i, '$1') || 'route.gpx';
+
+      let content: string;
+
+      // For content:// URIs, we need to copy to cache first, then read
+      if (fileUri.startsWith('content://')) {
+        const cacheFilePath = `${cacheDirectory}${fileName}`;
+        
+        // Copy the file from content URI to cache
+        await copyAsync({
+          from: fileUri,
+          to: cacheFilePath,
+        });
+
+        // Read from cache
+        content = await readAsStringAsync(cacheFilePath);
+
+        // Clean up cache file after reading
+        await deleteAsync(cacheFilePath, { idempotent: true });
+      } else {
+        // For file:// URIs, read directly
+        content = await readAsStringAsync(fileUri);
+      }
 
       // Parse GPX
       const route = parseGPX(content);
@@ -75,19 +75,41 @@ export default function Layout() {
         return;
       }
 
-      // Extract filename from URI
-      const fileName = fileUri.split('/').pop() || 'route.gpx';
-
       // Save to store
       setOriginalRoute(route, fileName);
 
-      // Navigate to POI selection
-      router.push('/poi-selection');
+      // Small delay to ensure router is ready
+      setTimeout(() => {
+        router.push('/poi-selection');
+      }, 100);
     } catch (error) {
       console.error('Error loading GPX from intent:', error);
       Alert.alert('Error', 'Failed to load GPX file. Please try again.');
     }
-  };
+  }, [router, setOriginalRoute]);
+
+  useEffect(() => {
+    // Handle initial URL when app is opened with a file
+    const handleInitialURL = async () => {
+      const initialUrl = await Linking.getInitialURL();
+      if (initialUrl) {
+        await handleFileIntent(initialUrl);
+      }
+    };
+
+    // Handle URL events when app is already running
+    const subscription = Linking.addEventListener('url', async (event) => {
+      if (event.url) {
+        await handleFileIntent(event.url);
+      }
+    });
+
+    handleInitialURL();
+
+    return () => {
+      subscription.remove();
+    };
+  }, [handleFileIntent]);
 
   return <Stack />;
 }

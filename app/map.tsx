@@ -1,7 +1,7 @@
 import { Stack, useRouter } from 'expo-router';
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator, Share, ScrollView, Dimensions, useWindowDimensions } from 'react-native';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
-import MapView, { Polyline, Marker, Callout, PROVIDER_DEFAULT } from 'react-native-maps';
+import Mapbox from '@rnmapbox/maps';
 import { cacheDirectory, documentDirectory, writeAsStringAsync } from 'expo-file-system/legacy';
 import { Download, Eye } from 'lucide-react-native';
 import { useStore, POI } from '@/store/store';
@@ -9,6 +9,11 @@ import { fetchPOIsAlongRoute } from '@/utils/poiService';
 import { generateRouteWithPOIs, calculateRouteDistance } from '@/utils/routeGenerator';
 import { generateGPX } from '@/utils/gpxParser';
 import RouteStatsOverlay from '@/components/RouteStatsOverlay';
+import Constants from 'expo-constants';
+
+// Set Mapbox access token
+const MAPBOX_TOKEN = Constants.expoConfig?.extra?.EXPO_PUBLIC_MAPBOX_TOKEN || process.env.EXPO_PUBLIC_MAPBOX_TOKEN || 'YOUR_MAPBOX_ACCESS_TOKEN';
+Mapbox.setAccessToken(MAPBOX_TOKEN);
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 const TABLET_BREAKPOINT = 768;
@@ -24,65 +29,39 @@ const getIconForPOIType = (type: string): string => {
 
 // Custom marker component for POIs
 const POIMarker = ({ poi, onToggle }: { poi: POI; onToggle: () => void }) => {
-  const markerRef = useRef<any>(null);
   const icon = getIconForPOIType(poi.type);
   const bgColor = poi.selected ? '#16a34a' : '#9ca3af';
 
-  const handleToggle = () => {
-    markerRef.current?.hideCallout();
-    onToggle();
-  };
-
   return (
-    <Marker ref={markerRef} coordinate={{ latitude: poi.lat, longitude: poi.lon }}>
-      <View
-        style={{
-          backgroundColor: bgColor,
-          width: 36,
-          height: 36,
-          borderRadius: 18,
-          borderWidth: 3,
-          borderColor: 'white',
-          alignItems: 'center',
-          justifyContent: 'center',
-          shadowColor: '#000',
-          shadowOffset: { width: 0, height: 2 },
-          shadowOpacity: 0.4,
-          shadowRadius: 3,
-          elevation: 5,
-        }}>
-        <Text style={{ fontSize: 20 }}>{icon}</Text>
-      </View>
-      <Callout onPress={handleToggle}>
-        <View style={{ minWidth: 200, padding: 8 }}>
-          <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 4 }}>
-            {poi.name}
-          </Text>
-          <Text style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>
-            {poi.type} • At {poi.distanceAlongRoute.toFixed(1)}km •{' '}
-            {poi.distanceFromRoute.toFixed(1)}km off route
-          </Text>
-          <View
-            style={{
-              backgroundColor: poi.selected ? '#9ca3af' : '#16a34a',
-              paddingVertical: 8,
-              paddingHorizontal: 12,
-              borderRadius: 4,
-              alignItems: 'center',
-            }}>
-            <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>
-              {poi.selected ? '✓ Remove' : '+ Add to Route'}
-            </Text>
-          </View>
+    <Mapbox.MarkerView coordinate={[poi.lon, poi.lat]} id={poi.id}>
+      <TouchableOpacity onPress={onToggle}>
+        <View
+          style={{
+            backgroundColor: bgColor,
+            width: 36,
+            height: 36,
+            borderRadius: 18,
+            borderWidth: 3,
+            borderColor: 'white',
+            alignItems: 'center',
+            justifyContent: 'center',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.4,
+            shadowRadius: 3,
+            elevation: 5,
+          }}>
+          <Text style={{ fontSize: 20 }}>{icon}</Text>
         </View>
-      </Callout>
-    </Marker>
+      </TouchableOpacity>
+    </Mapbox.MarkerView>
   );
 };
 
 export default function MapScreen() {
   const router = useRouter();
-  const mapRef = useRef<MapView>(null);
+  const mapRef = useRef<Mapbox.MapView>(null);
+  const cameraRef = useRef<Mapbox.Camera>(null);
   const { width } = useWindowDimensions();
   const isTabletLandscape = width >= TABLET_BREAKPOINT;
 
@@ -104,7 +83,39 @@ export default function MapScreen() {
 
   const selectedPOICount = useMemo(() => pois.filter((p) => p.selected).length, [pois]);
 
+  // Convert route points to GeoJSON LineString
+  const originalRouteGeoJSON = useMemo(() => {
+    if (!originalRoute) return null;
+    return {
+      type: 'Feature' as const,
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: originalRoute.points.map((p) => [p.lon, p.lat]),
+      },
+      properties: {},
+    };
+  }, [originalRoute]);
+
+  const modifiedRouteGeoJSON = useMemo(() => {
+    if (!modifiedRoute) return null;
+    return {
+      type: 'Feature' as const,
+      geometry: {
+        type: 'LineString' as const,
+        coordinates: modifiedRoute.points.map((p) => [p.lon, p.lat]),
+      },
+      properties: {},
+    };
+  }, [modifiedRoute]);
+
   useEffect(() => {
+    console.log('🗺️ MapScreen mounted');
+    console.log('📍 Original route points:', originalRoute?.points.length);
+    if (originalRoute && originalRoute.points.length > 0) {
+      console.log('📍 First point:', originalRoute.points[0]);
+      console.log('📍 Mapbox token set:', MAPBOX_TOKEN ? 'Yes' : 'No');
+    }
+    
     if (!originalRoute) {
       Alert.alert('Error', 'No route loaded', [{ text: 'OK', onPress: () => router.back() }]);
       return;
@@ -118,21 +129,28 @@ export default function MapScreen() {
     if (!originalRoute) return;
 
     try {
+      console.log('🔍 Loading POIs...');
       setLoadingPOIs(true);
       const fetchedPOIs = await fetchPOIsAlongRoute(originalRoute.points, poiTypes, maxDeviation);
+      console.log(`✅ Loaded ${fetchedPOIs.length} POIs`);
       setPOIs(fetchedPOIs);
       setLoadingPOIs(false);
 
       // Fit map to route
-      if (mapRef.current && originalRoute.points.length > 0) {
-        const coordinates = originalRoute.points.map((p) => ({
-          latitude: p.lat,
-          longitude: p.lon,
-        }));
-        mapRef.current.fitToCoordinates(coordinates, {
-          edgePadding: { top: 50, right: 50, bottom: 300, left: 50 },
-          animated: true,
-        });
+      if (cameraRef.current && originalRoute.points.length > 0) {
+        const coords = originalRoute.points.map((p) => [p.lon, p.lat]);
+        // Calculate bounds
+        const lons = coords.map(c => c[0]);
+        const lats = coords.map(c => c[1]);
+        const bounds = {
+          ne: [Math.max(...lons), Math.max(...lats)],
+          sw: [Math.min(...lons), Math.min(...lats)],
+          paddingTop: 50,
+          paddingRight: 50,
+          paddingBottom: 300,
+          paddingLeft: 50,
+        };
+        cameraRef.current.fitBounds(bounds.ne as [number, number], bounds.sw as [number, number], [50, 50, 300, 50], 1000);
       }
     } catch (error) {
       console.error('Error loading POIs:', error);
@@ -294,51 +312,47 @@ export default function MapScreen() {
         <View className="mx-auto w-full flex-1 flex-row gap-4 py-4" style={{ maxWidth: 1280 }}>
           {/* Map Section - Left Side */}
           <View className="flex-1 overflow-hidden rounded-lg">
-            <MapView
+            <Mapbox.MapView
               ref={mapRef}
-              provider={PROVIDER_DEFAULT}
               style={{ flex: 1 }}
-              initialRegion={{
-                latitude: originalRoute.points[0].lat,
-                longitude: originalRoute.points[0].lon,
-                latitudeDelta: 0.5,
-                longitudeDelta: 0.5,
-              }}
-              showsUserLocation={true}
-              showsMyLocationButton={true}
-              showsCompass={true}
-              showsScale={true}
-              loadingEnabled={true}
-              loadingIndicatorColor="#2563eb"
-              loadingBackgroundColor="#f9fafb">
-                {/* Original Route */}
-                {originalRoute && (
-                  <Polyline
-                    key={`original-${originalRoute.points.length}-${showModifiedRoute ? 'dim' : 'full'}`}
-                    coordinates={originalRoute.points.map((p) => ({
-                      latitude: p.lat,
-                      longitude: p.lon,
-                    }))}
-                    strokeColor="#2563eb"
-                    strokeWidth={3}
-                    zIndex={showModifiedRoute ? 1 : 2}
-                    lineDashPattern={showModifiedRoute ? [8, 8] : undefined}
-                  />
-                )}
+              styleURL={Mapbox.StyleURL.Street}
+              onDidFinishLoadingMap={() => {
+                console.log('✅ Mapbox map loaded successfully');
+              }}>
+              <Mapbox.Camera
+                ref={cameraRef}
+                zoomLevel={11}
+                centerCoordinate={[originalRoute.points[0].lon, originalRoute.points[0].lat]}
+              />
 
-                {/* Modified Route */}
-                {modifiedRoute && (
-                  <Polyline
-                    key={`modified-${modifiedRoute.points.length}-${showModifiedRoute ? 'full' : 'dim'}`}
-                    coordinates={modifiedRoute.points.map((p) => ({
-                      latitude: p.lat,
-                      longitude: p.lon,
-                    }))}
-                    strokeColor="#16a34a"
-                    strokeWidth={showModifiedRoute ? 5 : 2}
-                    zIndex={showModifiedRoute ? 3 : 1}
+              {/* Original Route */}
+              {originalRouteGeoJSON && (
+                <Mapbox.ShapeSource id="originalRoute" shape={originalRouteGeoJSON}>
+                  <Mapbox.LineLayer
+                    id="originalRouteLine"
+                    style={{
+                      lineColor: showModifiedRoute ? '#2563eb' : '#2563eb',
+                      lineWidth: 3,
+                      lineOpacity: showModifiedRoute ? 0.4 : 1,
+                      lineDasharray: showModifiedRoute ? [2, 2] : undefined,
+                    }}
                   />
-                )}
+                </Mapbox.ShapeSource>
+              )}
+
+              {/* Modified Route */}
+              {modifiedRouteGeoJSON && (
+                <Mapbox.ShapeSource id="modifiedRoute" shape={modifiedRouteGeoJSON}>
+                  <Mapbox.LineLayer
+                    id="modifiedRouteLine"
+                    style={{
+                      lineColor: '#16a34a',
+                      lineWidth: showModifiedRoute ? 5 : 2,
+                      lineOpacity: showModifiedRoute ? 1 : 0.6,
+                    }}
+                  />
+                </Mapbox.ShapeSource>
+              )}
 
               {/* POI Markers */}
               {pois.map((poi) => (
@@ -347,28 +361,28 @@ export default function MapScreen() {
 
               {/* Start Marker */}
               {displayRoute && displayRoute.points.length > 0 && (
-                <Marker
-                  coordinate={{
-                    latitude: displayRoute.points[0].lat,
-                    longitude: displayRoute.points[0].lon,
-                  }}
-                  title="Start"
-                  pinColor="#10b981"
-                />
+                <Mapbox.MarkerView coordinate={[displayRoute.points[0].lon, displayRoute.points[0].lat]} id="start">
+                  <View style={{ alignItems: 'center' }}>
+                    <View style={{ backgroundColor: '#10b981', width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: 'white' }} />
+                    <Text style={{ fontSize: 10, fontWeight: 'bold', marginTop: 2, color: '#10b981' }}>Start</Text>
+                  </View>
+                </Mapbox.MarkerView>
               )}
 
               {/* End Marker */}
               {displayRoute && displayRoute.points.length > 1 && (
-                <Marker
-                  coordinate={{
-                    latitude: displayRoute.points[displayRoute.points.length - 1].lat,
-                    longitude: displayRoute.points[displayRoute.points.length - 1].lon,
-                  }}
-                  title="End"
-                  pinColor="#ef4444"
-                />
+                <Mapbox.MarkerView 
+                  coordinate={[displayRoute.points[displayRoute.points.length - 1].lon, displayRoute.points[displayRoute.points.length - 1].lat]} 
+                  id="end">
+                  <View style={{ alignItems: 'center' }}>
+                    <View style={{ backgroundColor: '#ef4444', width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: 'white' }} />
+                    <Text style={{ fontSize: 10, fontWeight: 'bold', marginTop: 2, color: '#ef4444' }}>End</Text>
+                  </View>
+                </Mapbox.MarkerView>
               )}
-            </MapView>
+
+              <Mapbox.UserLocation visible={true} />
+            </Mapbox.MapView>
 
             {/* Route Stats Overlay */}
             <View
@@ -453,50 +467,46 @@ export default function MapScreen() {
           <ScrollView className="flex-1" contentContainerStyle={{ flexGrow: 1 }}>
             {/* Map Section - Takes half screen initially but scrolls away */}
             <View style={{ height: SCREEN_HEIGHT * 0.5 }}>
-              <MapView
+              <Mapbox.MapView
                 ref={mapRef}
-                provider={PROVIDER_DEFAULT}
                 style={{ flex: 1 }}
-                initialRegion={{
-                  latitude: originalRoute.points[0].lat,
-                  longitude: originalRoute.points[0].lon,
-                  latitudeDelta: 0.5,
-                  longitudeDelta: 0.5,
-                }}
-                showsUserLocation={true}
-                showsMyLocationButton={true}
-                showsCompass={true}
-                showsScale={true}
-                loadingEnabled={true}
-                loadingIndicatorColor="#2563eb"
-                loadingBackgroundColor="#f9fafb">
+                styleURL={Mapbox.StyleURL.Street}
+                onDidFinishLoadingMap={() => {
+                  console.log('✅ Mapbox map loaded successfully (mobile)');
+                }}>
+                <Mapbox.Camera
+                  ref={cameraRef}
+                  zoomLevel={11}
+                  centerCoordinate={[originalRoute.points[0].lon, originalRoute.points[0].lat]}
+                />
+
                 {/* Original Route */}
-                {originalRoute && (
-                  <Polyline
-                    key={`original-${originalRoute.points.length}-${showModifiedRoute ? 'dim' : 'full'}`}
-                    coordinates={originalRoute.points.map((p) => ({
-                      latitude: p.lat,
-                      longitude: p.lon,
-                    }))}
-                    strokeColor="#2563eb"
-                    strokeWidth={3}
-                    zIndex={showModifiedRoute ? 1 : 2}
-                    lineDashPattern={showModifiedRoute ? [8, 8] : undefined}
-                  />
+                {originalRouteGeoJSON && (
+                  <Mapbox.ShapeSource id="originalRouteMobile" shape={originalRouteGeoJSON}>
+                    <Mapbox.LineLayer
+                      id="originalRouteLineMobile"
+                      style={{
+                        lineColor: showModifiedRoute ? '#2563eb' : '#2563eb',
+                        lineWidth: 3,
+                        lineOpacity: showModifiedRoute ? 0.4 : 1,
+                        lineDasharray: showModifiedRoute ? [2, 2] : undefined,
+                      }}
+                    />
+                  </Mapbox.ShapeSource>
                 )}
 
                 {/* Modified Route */}
-                {modifiedRoute && (
-                  <Polyline
-                    key={`modified-${modifiedRoute.points.length}-${showModifiedRoute ? 'full' : 'dim'}`}
-                    coordinates={modifiedRoute.points.map((p) => ({
-                      latitude: p.lat,
-                      longitude: p.lon,
-                    }))}
-                    strokeColor="#16a34a"
-                    strokeWidth={showModifiedRoute ? 5 : 2}
-                    zIndex={showModifiedRoute ? 3 : 1}
-                  />
+                {modifiedRouteGeoJSON && (
+                  <Mapbox.ShapeSource id="modifiedRouteMobile" shape={modifiedRouteGeoJSON}>
+                    <Mapbox.LineLayer
+                      id="modifiedRouteLineMobile"
+                      style={{
+                        lineColor: '#16a34a',
+                        lineWidth: showModifiedRoute ? 5 : 2,
+                        lineOpacity: showModifiedRoute ? 1 : 0.6,
+                      }}
+                    />
+                  </Mapbox.ShapeSource>
                 )}
 
                 {/* POI Markers */}
@@ -506,28 +516,28 @@ export default function MapScreen() {
 
                 {/* Start Marker */}
                 {displayRoute && displayRoute.points.length > 0 && (
-                  <Marker
-                    coordinate={{
-                      latitude: displayRoute.points[0].lat,
-                      longitude: displayRoute.points[0].lon,
-                    }}
-                    title="Start"
-                    pinColor="#10b981"
-                  />
+                  <Mapbox.MarkerView coordinate={[displayRoute.points[0].lon, displayRoute.points[0].lat]} id="startMobile">
+                    <View style={{ alignItems: 'center' }}>
+                      <View style={{ backgroundColor: '#10b981', width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: 'white' }} />
+                      <Text style={{ fontSize: 10, fontWeight: 'bold', marginTop: 2, color: '#10b981' }}>Start</Text>
+                    </View>
+                  </Mapbox.MarkerView>
                 )}
 
                 {/* End Marker */}
                 {displayRoute && displayRoute.points.length > 1 && (
-                  <Marker
-                    coordinate={{
-                      latitude: displayRoute.points[displayRoute.points.length - 1].lat,
-                      longitude: displayRoute.points[displayRoute.points.length - 1].lon,
-                    }}
-                    title="End"
-                    pinColor="#ef4444"
-                  />
+                  <Mapbox.MarkerView 
+                    coordinate={[displayRoute.points[displayRoute.points.length - 1].lon, displayRoute.points[displayRoute.points.length - 1].lat]} 
+                    id="endMobile">
+                    <View style={{ alignItems: 'center' }}>
+                      <View style={{ backgroundColor: '#ef4444', width: 12, height: 12, borderRadius: 6, borderWidth: 2, borderColor: 'white' }} />
+                      <Text style={{ fontSize: 10, fontWeight: 'bold', marginTop: 2, color: '#ef4444' }}>End</Text>
+                    </View>
+                  </Mapbox.MarkerView>
                 )}
-              </MapView>
+
+                <Mapbox.UserLocation visible={true} />
+              </Mapbox.MapView>
 
               {/* Route Stats Overlay */}
               <View
