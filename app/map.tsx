@@ -28,14 +28,23 @@ const getIconForPOIType = (type: string): string => {
 };
 
 // Custom marker component for POIs
-const POIMarker = ({ poi, onToggle }: { poi: POI; onToggle: () => void }) => {
+const POIMarker = ({ poi, onToggle, isSelected, onSelect }: { 
+  poi: POI; 
+  onToggle: () => void; 
+  isSelected: boolean;
+  onSelect: () => void;
+}) => {
   const icon = getIconForPOIType(poi.type);
   const bgColor = poi.selected ? '#16a34a' : '#9ca3af';
 
   return (
-    <Mapbox.MarkerView coordinate={[poi.lon, poi.lat]} id={poi.id}>
-      <TouchableOpacity onPress={onToggle}>
-        <View
+    <Mapbox.MarkerView
+      id={poi.id}
+      coordinate={[poi.lon, poi.lat]}>
+      <View>
+        <TouchableOpacity
+          onPress={onSelect}
+          activeOpacity={0.7}
           style={{
             backgroundColor: bgColor,
             width: 36,
@@ -52,8 +61,46 @@ const POIMarker = ({ poi, onToggle }: { poi: POI; onToggle: () => void }) => {
             elevation: 5,
           }}>
           <Text style={{ fontSize: 20 }}>{icon}</Text>
-        </View>
-      </TouchableOpacity>
+        </TouchableOpacity>
+        
+        {isSelected && (
+          <View style={{ 
+            position: 'absolute',
+            top: 40,
+            left: -82,
+            minWidth: 200, 
+            padding: 12,
+            backgroundColor: 'white',
+            borderRadius: 8,
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 2 },
+            shadowOpacity: 0.25,
+            shadowRadius: 3.84,
+            elevation: 5,
+          }}>
+            <Text style={{ fontWeight: 'bold', fontSize: 16, marginBottom: 4 }}>
+              {poi.name}
+            </Text>
+            <Text style={{ fontSize: 12, color: '#666', marginBottom: 8 }}>
+              {poi.type} • At {poi.distanceAlongRoute.toFixed(1)}km •{' '}
+              {poi.distanceFromRoute.toFixed(1)}km off route
+            </Text>
+            <TouchableOpacity
+              onPress={onToggle}
+              style={{
+                backgroundColor: poi.selected ? '#c10007' : '#16a34a',
+                paddingVertical: 8,
+                paddingHorizontal: 12,
+                borderRadius: 4,
+                alignItems: 'center',
+              }}>
+              <Text style={{ color: 'white', fontWeight: '600', fontSize: 14 }}>
+                {poi.selected ? '✓ Remove' : '+ Add to Route'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        )}
+      </View>
     </Mapbox.MarkerView>
   );
 };
@@ -80,6 +127,7 @@ export default function MapScreen() {
   const [loadingPOIs, setLoadingPOIs] = useState(true);
   const [showModifiedRoute, setShowModifiedRoute] = useState(false);
   const [lastGeneratedCount, setLastGeneratedCount] = useState(0);
+  const [selectedPOIId, setSelectedPOIId] = useState<string | null>(null);
 
   const selectedPOICount = useMemo(() => pois.filter((p) => p.selected).length, [pois]);
 
@@ -298,6 +346,8 @@ export default function MapScreen() {
     );
   };
 
+  console.log("selectedPOIId", selectedPOIId);
+
   return (
     <View className="flex-1">
       <Stack.Screen 
@@ -316,6 +366,14 @@ export default function MapScreen() {
               ref={mapRef}
               style={{ flex: 1 }}
               styleURL={Mapbox.StyleURL.Street}
+              zoomEnabled={true}
+              scrollEnabled={true}
+              pitchEnabled={true}
+              rotateEnabled={true}
+              compassEnabled={true}
+              compassViewPosition={3}
+              scaleBarEnabled={true}
+              onPress={() => setSelectedPOIId(null)}
               onDidFinishLoadingMap={() => {
                 console.log('✅ Mapbox map loaded successfully');
               }}>
@@ -354,10 +412,34 @@ export default function MapScreen() {
                 </Mapbox.ShapeSource>
               )}
 
-              {/* POI Markers */}
-              {pois.map((poi) => (
-                <POIMarker key={poi.id} poi={poi} onToggle={() => togglePOI(poi.id)} />
-              ))}
+              {/* POI Markers - Render unselected first, then selected last (so it's on top) */}
+              {pois
+                .filter((poi) => selectedPOIId !== poi.id)
+                .map((poi) => (
+                  <POIMarker 
+                    key={poi.id} 
+                    poi={poi} 
+                    onToggle={() => {
+                      togglePOI(poi.id);
+                      setSelectedPOIId(null);
+                    }}
+                    isSelected={false}
+                    onSelect={() => setSelectedPOIId(poi.id)}
+                  />
+                ))}
+              {/* Render selected marker last so it appears on top */}
+              {selectedPOIId && pois.find((poi) => poi.id === selectedPOIId) && (
+                <POIMarker 
+                  key={selectedPOIId} 
+                  poi={pois.find((poi) => poi.id === selectedPOIId)!} 
+                  onToggle={() => {
+                    togglePOI(selectedPOIId);
+                    setSelectedPOIId(null);
+                  }}
+                  isSelected={true}
+                  onSelect={() => setSelectedPOIId(selectedPOIId)}
+                />
+              )}
 
               {/* Start Marker */}
               {displayRoute && displayRoute.points.length > 0 && (
@@ -462,15 +544,22 @@ export default function MapScreen() {
           </ScrollView>
         </View>
       ) : (
-        // Mobile: Scrollable layout with map at top
-        <>
-          <ScrollView className="flex-1" contentContainerStyle={{ flexGrow: 1 }}>
-            {/* Map Section - Takes half screen initially but scrolls away */}
-            <View style={{ height: SCREEN_HEIGHT * 0.5 }}>
-              <Mapbox.MapView
+        // Mobile: Fixed map with scrollable POI list below
+        <View className="flex-1">
+          {/* Map Section - Fixed at top half */}
+          <View style={{ height: SCREEN_HEIGHT * 0.5 }}>
+            <Mapbox.MapView
                 ref={mapRef}
                 style={{ flex: 1 }}
                 styleURL={Mapbox.StyleURL.Street}
+                zoomEnabled={true}
+                scrollEnabled={true}
+                pitchEnabled={true}
+                rotateEnabled={true}
+                compassEnabled={true}
+                compassViewPosition={3}
+                scaleBarEnabled={false}
+                onPress={() => setSelectedPOIId(null)}
                 onDidFinishLoadingMap={() => {
                   console.log('✅ Mapbox map loaded successfully (mobile)');
                 }}>
@@ -509,10 +598,34 @@ export default function MapScreen() {
                   </Mapbox.ShapeSource>
                 )}
 
-                {/* POI Markers */}
-                {pois.map((poi) => (
-                  <POIMarker key={poi.id} poi={poi} onToggle={() => togglePOI(poi.id)} />
-                ))}
+                {/* POI Markers - Render unselected first, then selected last (so it's on top) */}
+                {pois
+                  .filter((poi) => selectedPOIId !== poi.id)
+                  .map((poi) => (
+                    <POIMarker 
+                      key={poi.id} 
+                      poi={poi} 
+                      onToggle={() => {
+                        togglePOI(poi.id);
+                        setSelectedPOIId(null);
+                      }}
+                      isSelected={false}
+                      onSelect={() => setSelectedPOIId(poi.id)}
+                    />
+                  ))}
+                {/* Render selected marker last so it appears on top */}
+                {selectedPOIId && pois.find((poi) => poi.id === selectedPOIId) && (
+                  <POIMarker 
+                    key={selectedPOIId} 
+                    poi={pois.find((poi) => poi.id === selectedPOIId)!} 
+                    onToggle={() => {
+                      togglePOI(selectedPOIId);
+                      setSelectedPOIId(null);
+                    }}
+                    isSelected={true}
+                    onSelect={() => setSelectedPOIId(selectedPOIId)}
+                  />
+                )}
 
                 {/* Start Marker */}
                 {displayRoute && displayRoute.points.length > 0 && (
@@ -537,26 +650,26 @@ export default function MapScreen() {
                 )}
 
                 <Mapbox.UserLocation visible={true} />
-              </Mapbox.MapView>
+            </Mapbox.MapView>
 
-              {/* Route Stats Overlay */}
-              <View
-                style={{
-                  position: 'absolute',
-                  bottom: 16,
-                  right: 16,
-                  zIndex: 1000,
-                }}>
-                <RouteStatsOverlay
-                  originalRoute={originalRoute}
-                  modifiedRoute={modifiedRoute}
-                  showModifiedRoute={showModifiedRoute}
-                />
-              </View>
+            {/* Route Stats Overlay */}
+            <View
+              style={{
+                position: 'absolute',
+                top: 16,
+                right: 16,
+                zIndex: 1000,
+              }}>
+              <RouteStatsOverlay
+                originalRoute={originalRoute}
+                modifiedRoute={modifiedRoute}
+                showModifiedRoute={showModifiedRoute}
+              />
             </View>
+          </View>
 
-            {/* POI List Section */}
-            <View className="bg-white px-4">
+          {/* POI List Section - Scrollable */}
+          <ScrollView className="flex-1 bg-white px-4">
               <View className="mb-4 mt-4">
                 <Text className="mb-2 text-xl font-bold text-gray-900">
                   Points of Interest ({pois.length})
@@ -611,12 +724,11 @@ export default function MapScreen() {
                         </View>
                       </TouchableOpacity>
                     ))}
-                  </>
-                )}
-              </View>
-              {/* Extra padding at bottom to ensure content isn't hidden behind FABs */}
-              <View className="h-40" />
+                </>
+              )}
             </View>
+            {/* Extra padding at bottom to ensure content isn't hidden behind FABs */}
+            <View className="h-40" />
           </ScrollView>
 
           {/* Floating Action Buttons - Mobile Only */}
@@ -652,7 +764,7 @@ export default function MapScreen() {
               </Text>
             </TouchableOpacity>
           </View>
-        </>
+        </View>
       )}
     </View>
   );
