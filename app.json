@@ -59,6 +59,46 @@
         "ACCESS_FINE_LOCATION",
         "ACCESS_COARSE_LOCATION",
         "INTERNET"
+      ],
+      "package": "com.thirdeyeproductions.refill",
+      "intentFilters": [
+        {
+          "action": "VIEW",
+          "autoVerify": true,
+          "data": [
+            {
+              "mimeType": "application/gpx+xml"
+            },
+            {
+              "mimeType": "application/xml",
+              "pathPattern": ".*\\.gpx"
+            },
+            {
+              "mimeType": "text/xml",
+              "pathPattern": ".*\\.gpx"
+            },
+            {
+              "mimeType": "application/octet-stream",
+              "pathPattern": ".*\\.gpx"
+            },
+            {
+              "mimeType": "*/*",
+              "pathPattern": ".*\\.gpx"
+            },
+            {
+              "scheme": "file",
+              "pathPattern": ".*\\.gpx"
+            },
+            {
+              "scheme": "content",
+              "pathPattern": ".*\\.gpx"
+            }
+          ],
+          "category": [
+            "BROWSABLE",
+            "DEFAULT"
+          ]
+        }
       ]
     },
     "extra": {
