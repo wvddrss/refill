@@ -1,6 +1,7 @@
 import { Stack, useRouter } from 'expo-router';
 import { View, Text, TouchableOpacity, Alert, ActivityIndicator, ScrollView, Dimensions, useWindowDimensions } from 'react-native';
 import { useState, useEffect, useRef, useMemo, useCallback } from 'react';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import Mapbox from '@rnmapbox/maps';
 import { cacheDirectory, documentDirectory, writeAsStringAsync } from 'expo-file-system/legacy';
 import * as Sharing from 'expo-sharing';
@@ -112,6 +113,7 @@ export default function MapScreen() {
   const cameraRef = useRef<Mapbox.Camera>(null);
   const { width } = useWindowDimensions();
   const isTabletLandscape = width >= TABLET_BREAKPOINT;
+  const insets = useSafeAreaInsets();
 
   const {
     originalRoute,
@@ -741,7 +743,7 @@ export default function MapScreen() {
           </ScrollView>
 
           {/* Floating Action Buttons - Mobile Only */}
-          <View className="absolute bottom-6 right-6 gap-3">
+          <View className="absolute right-6 gap-3" style={{ bottom: Math.max(insets.bottom, 24) }}>
             {showModifiedRoute ? (
               <TouchableOpacity
                 className="flex-row items-center justify-center rounded-full bg-white px-6 py-3 shadow-lg"
