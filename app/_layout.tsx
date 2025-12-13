@@ -10,7 +10,7 @@ import { parseGPX } from '@/utils/gpxParser';
 
 export default function Layout() {
   const router = useRouter();
-  const { setOriginalRoute } = useStore();
+  const { setOriginalRoute, reset } = useStore();
 
   const handleFileIntent = useCallback(async (url: string) => {
     try {
@@ -75,6 +75,9 @@ export default function Layout() {
         return;
       }
 
+      // Reset any existing route data before loading new route
+      reset();
+
       // Save to store
       setOriginalRoute(route, fileName);
 
@@ -86,7 +89,7 @@ export default function Layout() {
       console.error('Error loading GPX from intent:', error);
       Alert.alert('Error', 'Failed to load GPX file. Please try again.');
     }
-  }, [router, setOriginalRoute]);
+  }, [router, setOriginalRoute, reset]);
 
   useEffect(() => {
     // Handle initial URL when app is opened with a file
